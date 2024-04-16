@@ -94,27 +94,8 @@ func (db *KeyValueDB) Exec(txID string) []string {
 	delete(db.queues, txID)
 
 	responses := []string{}
-	for _, cmd := range queue {
-		parts := strings.Fields(cmd)
+	responses = append(responses, queue...)
 
-		if len(parts) == 0 {
-			continue
-		}
-
-		command := strings.ToUpper(parts[0])
-
-		switch command {
-		case "SET":
-			if len(parts) < 3 {
-				responses = append(responses, "Usage: SET <key> <value>")
-				continue
-			}
-			responses = append(responses, cmd)
-
-		default:
-			responses = append(responses, fmt.Sprintf("Unknown command: %s", command))
-		}
-	}
 	return responses
 }
 
@@ -141,8 +122,6 @@ func handleClient(conn net.Conn, db *KeyValueDB) {
 		switch command {
 		case "SET", "GET", "DELETE", "INCR", "INCRBY":
 			if currentTxID == "" {
-				fmt.Println("command: ", command)
-				fmt.Println("parts: ", parts)
 				executeSingleCommand(command, parts, db, conn)
 			} else {
 				db.QueueCommand(currentTxID, cmd)
@@ -155,18 +134,11 @@ func handleClient(conn net.Conn, db *KeyValueDB) {
 			if currentTxID == "" {
 				conn.Write([]byte("ERR No transaction in progress\n"))
 			} else {
-				fmt.Println("currentTxID: ", currentTxID)
 				responses := db.Exec(currentTxID)
 				for _, resp := range responses {
-					//fmt.Println("key: ", resp[0])
-					//fmt.Println("cmd: ", resp[0:])
 					cmd := strings.Fields(resp[0:])
-
-					fmt.Println("command: ", strings.ToUpper(cmd[0]))
-					fmt.Println(" cmdParts: ", cmd)
-
-					executeSingleCommand(command, parts, db, conn)
-					conn.Write([]byte(fmt.Sprintf("%s\n", resp)))
+					command = strings.ToUpper(cmd[0])
+					executeSingleCommand(command, cmd, db, conn)
 				}
 				currentTxID = ""
 			}

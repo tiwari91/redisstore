@@ -69,7 +69,10 @@ func (db *KeyValueDB) Incr(key string, by int64) (int64, error) {
 }
 
 func isValidValue(value string) bool {
-	return strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")
+	if strings.Contains(value, " ") {
+		return strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")
+	}
+	return true
 }
 
 func handleClient(conn net.Conn, db *KeyValueDB) {
@@ -98,17 +101,7 @@ func handleClient(conn net.Conn, db *KeyValueDB) {
 			key := parts[1]
 			value := strings.Join(parts[2:], " ")
 
-			if _, err := strconv.Atoi(value); err == nil {
-				_, err := db.Incr(key, 0)
-				if err != nil {
-					conn.Write([]byte(fmt.Sprintf("%s\n", err.Error())))
-					continue
-				}
-				conn.Write([]byte("OK\n"))
-				continue
-			}
-
-			// If not a number, set the value as usual
+			// Set the value
 			if err := db.Set(key, value); err != nil {
 				conn.Write([]byte(fmt.Sprintf("%s\n", err.Error())))
 				continue

@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"os"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,18 +54,15 @@ func (db *KeyValueDB) Incr(key string, by int64) (int64, error) {
 
 	val, ok := db.data[key]
 	if !ok {
-		// If the key doesn't exist, initialize it with 0
 		db.data[key] = "0"
 		val = "0"
 	}
 
-	// Parse the existing value as an integer
 	current, err := strconv.ParseInt(val, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("ERR value is not an integer")
 	}
 
-	// Increment the value by the specified amount
 	current += by
 	db.data[key] = strconv.FormatInt(current, 10)
 	return current, nil
@@ -75,20 +72,17 @@ func isValidValue(value string) bool {
 	return strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")
 }
 
-func main() {
-	db := NewKeyValueDB()
-
-	scanner := bufio.NewScanner(os.Stdin)
+func handleClient(conn net.Conn, db *KeyValueDB) {
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
 	for {
-		fmt.Print("> ")
-		scanned := scanner.Scan()
-		if !scanned {
+		cmd, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading command:", err)
 			return
 		}
-
-		line := scanner.Text()
-		parts := strings.Fields(line)
-
+		cmd = strings.TrimSpace(cmd)
+		parts := strings.Fields(cmd)
 		if len(parts) == 0 {
 			continue
 		}
@@ -98,7 +92,7 @@ func main() {
 		switch command {
 		case "SET":
 			if len(parts) < 3 {
-				fmt.Println("Usage: SET <key> <value>")
+				conn.Write([]byte("Usage: SET <key> <value>\n"))
 				continue
 			}
 			key := parts[1]
@@ -107,73 +101,96 @@ func main() {
 			if _, err := strconv.Atoi(value); err == nil {
 				_, err := db.Incr(key, 0)
 				if err != nil {
-					fmt.Println(err)
+					conn.Write([]byte(fmt.Sprintf("%s\n", err.Error())))
 					continue
 				}
-				fmt.Println("OK")
+				conn.Write([]byte("OK\n"))
 				continue
 			}
 
 			// If not a number, set the value as usual
 			if err := db.Set(key, value); err != nil {
-				fmt.Println(err)
+				conn.Write([]byte(fmt.Sprintf("%s\n", err.Error())))
 				continue
 			}
-			fmt.Println("OK")
+			conn.Write([]byte("OK\n"))
 		case "GET":
 			if len(parts) < 2 {
-				fmt.Println("Usage: GET <key>")
+				conn.Write([]byte("Usage: GET <key>\n"))
 				continue
 			}
 			key := parts[1]
 			val, ok := db.Get(key)
 			if ok {
-				fmt.Printf("%q\n", val)
+				conn.Write([]byte(fmt.Sprintf("%q\n", val)))
 			} else {
-				fmt.Println("(nil)")
+				conn.Write([]byte("(nil)\n"))
 			}
 		case "DELETE":
 			if len(parts) < 2 {
-				fmt.Println("Usage: DELETE <key>")
+				conn.Write([]byte("Usage: DELETE <key>\n"))
 				continue
 			}
 			key := parts[1]
 			if db.Delete(key) {
-				fmt.Println("(integer) 1")
+				conn.Write([]byte("(integer) 1\n"))
 			} else {
-				fmt.Println("(integer) 0")
+				conn.Write([]byte("(integer) 0\n"))
 			}
 		case "INCR":
 			if len(parts) < 2 {
-				fmt.Println("Usage: INCR <key>")
+				conn.Write([]byte("Usage: INCR <key>\n"))
 				continue
 			}
 			key := parts[1]
 			_, err := db.Incr(key, 1)
 			if err != nil {
-				fmt.Println(err)
+				conn.Write([]byte(fmt.Sprintf("%s\n", err.Error())))
 				continue
 			}
-			fmt.Println("OK")
+			conn.Write([]byte("OK\n"))
 		case "INCRBY":
 			if len(parts) < 3 {
-				fmt.Println("Usage: INCRBY <key> <increment>")
+				conn.Write([]byte("Usage: INCRBY <key> <increment>\n"))
 				continue
 			}
 			key := parts[1]
 			incrBy, err := strconv.ParseInt(parts[2], 10, 64)
 			if err != nil {
-				fmt.Println("ERR invalid increment")
+				conn.Write([]byte("ERR invalid increment\n"))
 				continue
 			}
 			_, err = db.Incr(key, incrBy)
 			if err != nil {
-				fmt.Println(err)
+				conn.Write([]byte(fmt.Sprintf("%s\n", err.Error())))
 				continue
 			}
-			fmt.Printf("(integer) %d\n", incrBy)
+			conn.Write([]byte(fmt.Sprintf("(integer) %d\n", incrBy)))
+		case "DISCONNECT":
+			return
 		default:
-			fmt.Println("Unknown command:", command)
+			conn.Write([]byte(fmt.Sprintf("Unknown command: %s\n", command)))
 		}
+	}
+}
+
+func main() {
+	port := 4544
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		fmt.Println("Error starting server:", err)
+		return
+	}
+	defer listener.Close()
+
+	db := NewKeyValueDB()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection:", err)
+			continue
+		}
+		go handleClient(conn, db)
 	}
 }

@@ -48,15 +48,15 @@ func (db *KeyValueDB) Delete(key string) bool {
 	return false
 }
 
-func (db *KeyValueDB) Incr(key string) (int64, error) {
+func (db *KeyValueDB) Incr(key string, by int64) (int64, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
 	val, ok := db.data[key]
 	if !ok {
-		// If the key doesn't exist, initialize it with 1
-		db.data[key] = "1"
-		return 1, nil
+		// If the key doesn't exist, initialize it with 0
+		db.data[key] = "0"
+		val = "0"
 	}
 
 	// Parse the existing value as an integer
@@ -65,8 +65,8 @@ func (db *KeyValueDB) Incr(key string) (int64, error) {
 		return 0, fmt.Errorf("ERR value is not an integer")
 	}
 
-	// Increment the value
-	current++
+	// Increment the value by the specified amount
+	current += by
 	db.data[key] = strconv.FormatInt(current, 10)
 	return current, nil
 }
@@ -104,10 +104,8 @@ func main() {
 			key := parts[1]
 			value := strings.Join(parts[2:], " ")
 
-			// Check if the value is a number
 			if _, err := strconv.Atoi(value); err == nil {
-				// If it's a number, perform increment
-				_, err := db.Incr(key)
+				_, err := db.Incr(key, 0)
 				if err != nil {
 					fmt.Println(err)
 					continue
@@ -151,12 +149,29 @@ func main() {
 				continue
 			}
 			key := parts[1]
-			_, err := db.Incr(key)
+			_, err := db.Incr(key, 1)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
 			fmt.Println("OK")
+		case "INCRBY":
+			if len(parts) < 3 {
+				fmt.Println("Usage: INCRBY <key> <increment>")
+				continue
+			}
+			key := parts[1]
+			incrBy, err := strconv.ParseInt(parts[2], 10, 64)
+			if err != nil {
+				fmt.Println("ERR invalid increment")
+				continue
+			}
+			_, err = db.Incr(key, incrBy)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("(integer) %d\n", incrBy)
 		default:
 			fmt.Println("Unknown command:", command)
 		}

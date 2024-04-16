@@ -130,6 +130,14 @@ func handleClient(conn net.Conn, db *KeyValueDB) {
 		case "MULTI":
 			currentTxID = "1"
 			conn.Write([]byte("OK\n"))
+		case "DISCARD":
+			if currentTxID == "" {
+				conn.Write([]byte("ERR No transaction in progress\n"))
+			} else {
+				delete(db.queues, currentTxID)
+				currentTxID = ""
+				conn.Write([]byte("OK\n"))
+			}
 		case "EXEC":
 			if currentTxID == "" {
 				conn.Write([]byte("ERR No transaction in progress\n"))

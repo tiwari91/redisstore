@@ -135,9 +135,11 @@ func handleClient(conn net.Conn, db *KeyValueDB) {
 				conn.Write([]byte("ERR No transaction in progress\n"))
 			} else {
 				responses := db.Exec(currentTxID)
-				for _, resp := range responses {
+				for index, resp := range responses {
 					cmd := strings.Fields(resp[0:])
 					command = strings.ToUpper(cmd[0])
+					indexStr := strconv.Itoa(index+1) + ")"
+					conn.Write([]byte(indexStr))
 					executeSingleCommand(command, cmd, db, conn)
 				}
 				currentTxID = ""

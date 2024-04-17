@@ -2,4 +2,4 @@ Implementing Redis via exercise: https://playbook.one2n.in/key-value-db-redis-ex
 
 1. Open a terminal session and run ./main go
 2. Open another terminal session and run nc localhost 9736
-3. Use get, set, delete, inc, incby
+3. Use get, set, delete, incr, incrby
